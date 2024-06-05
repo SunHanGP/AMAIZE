@@ -1,10 +1,12 @@
-# X-TRACK
+# Fork From X-TRACK
 > 开源GPS自行车码表。
-> 
+>
+> **新增嘉立创PCB工程文件(2.0寸版本)**
+>
 > 拥有可显示实时位置的离线地图。
-> 
+>
 > 支持记录和显示实时轨迹以及导出标准GPX格式的轨迹文件。
-> 
+>
 > 全新设计的["页面生命周期管理"](https://github.com/FASTSHIFT/X-TRACK/tree/main/Software/X-Track/USER/App/Utils/PageManager)和["消息订阅发布框架"](https://github.com/FASTSHIFT/X-TRACK/tree/main/Software/X-Track/USER/App/Utils/DataCenter)。
 >
 > 演示视频：https://www.bilibili.com/video/BV1GB4y1K7VV
