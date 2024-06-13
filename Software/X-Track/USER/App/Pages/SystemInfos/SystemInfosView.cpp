@@ -281,7 +281,7 @@ void SystemInfosView::Item_Create(
     label = lv_label_create(cont);
     lv_label_set_text(label, "-");
     lv_obj_add_style(label, &style.data, 0);
-    lv_obj_align(label, LV_ALIGN_CENTER, 60, 0);
+    lv_obj_align(label, LV_ALIGN_CENTER, 65, 0);
     item->labelData = label;
 
     lv_obj_move_foreground(icon);

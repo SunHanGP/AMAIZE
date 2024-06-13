@@ -66,6 +66,7 @@ void MPU6050::initialize() {
     setClockSource(MPU6050_CLOCK_PLL_XGYRO);
     setFullScaleGyroRange(MPU6050_GYRO_FS_250);
     setFullScaleAccelRange(MPU6050_ACCEL_FS_2);
+    setI2CBypassEnabled(true); // set bypass enable for QMC6310U
     setSleepEnabled(false); // thanks to Jack Elston for pointing this one out!
 }
 
@@ -2758,38 +2759,40 @@ void MPU6050::getFIFOBytes(uint8_t *data, uint8_t length) {
  *         2) when recovering from overflow
  *         0) when no valid data is available
  * ================================================================ */
- int8_t MPU6050::GetCurrentFIFOPacket(uint8_t *data, uint8_t length) { // overflow proof
-     int16_t fifoC;
-     // This section of code is for when we allowed more than 1 packet to be acquired
-     uint32_t BreakTimer = micros();
-     do {
-         if ((fifoC = getFIFOCount())  > length) {
+int8_t MPU6050::GetCurrentFIFOPacket(uint8_t *data, uint8_t length) { // overflow proof
+    int16_t fifoC;
+    // This section of code is for when we allowed more than 1 packet to be acquired
+    uint32_t BreakTimer = micros();
+    do {
+        fifoC = getFIFOCount();
+        if (fifoC > length) {
 
-             if (fifoC > 200) { // if you waited to get the FIFO buffer to > 200 bytes it will take longer to get the last packet in the FIFO Buffer than it will take to  reset the buffer and wait for the next to arrive
-                 resetFIFO(); // Fixes any overflow corruption
-                 fifoC = 0;
-                 while (!(fifoC = getFIFOCount()) && ((micros() - BreakTimer) <= (11000))); // Get Next New Packet
-                 } else { //We have more than 1 packet but less than 200 bytes of data in the FIFO Buffer
-                 uint8_t Trash[BUFFER_LENGTH];
-                 while ((fifoC = getFIFOCount()) > length) {  // Test each time just in case the MPU is writing to the FIFO Buffer
-                     fifoC = fifoC - length; // Save the last packet
-                     uint16_t  RemoveBytes;
-                     while (fifoC) { // fifo count will reach zero so this is safe
-                         RemoveBytes = min((int)fifoC, BUFFER_LENGTH); // Buffer Length is different than the packet length this will efficiently clear the buffer
-                         getFIFOBytes(Trash, (uint8_t)RemoveBytes);
-                         fifoC -= RemoveBytes;
-                     }
-                 }
-             }
-         }
-         if (!fifoC) return 0; // Called too early no data or we timed out after FIFO Reset
-         // We have 1 packet
-         if ((micros() - BreakTimer) > (11000)) return 0;
-     } while (fifoC != length);
-     getFIFOBytes(data, length); //Get 1 packet
-     return 1;
+            if (fifoC > 200) { // if you waited to get the FIFO buffer to > 200 bytes it will take longer to get the last packet in the FIFO Buffer than it will take to  reset the buffer and wait for the next to arrive
+                resetFIFO(); // Fixes any overflow corruption
+                fifoC = 0;
+                while (fifoC == 0 && ((micros() - BreakTimer) <= 11000)) { // Get Next New Packet
+                    fifoC = getFIFOCount();
+                }
+            } else { // We have more than 1 packet but less than 200 bytes of data in the FIFO Buffer
+                uint8_t Trash[BUFFER_LENGTH];
+                while ((fifoC = getFIFOCount()) > length) {  // Test each time just in case the MPU is writing to the FIFO Buffer
+                    fifoC = fifoC - length; // Save the last packet
+                    uint16_t RemoveBytes;
+                    while (fifoC) { // fifo count will reach zero so this is safe
+                        RemoveBytes = min((int)fifoC, BUFFER_LENGTH); // Buffer Length is different than the packet length this will efficiently clear the buffer
+                        getFIFOBytes(Trash, (uint8_t)RemoveBytes);
+                        fifoC -= RemoveBytes;
+                    }
+                }
+            }
+        }
+        if (fifoC == 0) return 0; // Called too early no data or we timed out after FIFO Reset
+        // We have 1 packet
+        if ((micros() - BreakTimer) > 11000) return 0;
+    } while (fifoC != length);
+    getFIFOBytes(data, length); // Get 1 packet
+    return 1;
 }
-
 
 /** Write byte to FIFO buffer.
  * @see getFIFOByte()
@@ -3294,68 +3297,74 @@ void MPU6050::CalibrateAccel(uint8_t Loops ) {
 	PID( 0x3B, kP, kI,  Loops);
 }
 
-void MPU6050::PID(uint8_t ReadAddress, float kP,float kI, uint8_t Loops){
-	uint8_t SaveAddress = (ReadAddress == 0x3B)?((getDeviceID() < 0x38 )? 0x06:0x77):0x13;
+float custom_roundf(float value) {
+    return (value >= 0.0f) ? floorf(value + 0.5f) : ceilf(value - 0.5f);
+}
 
-	int16_t  Data;
-	float Reading;
-	int16_t BitZero[3];
-	uint8_t shift =(SaveAddress == 0x77)?3:2;
-	float Error, PTerm, ITerm[3];
-	int16_t eSample;
-	uint32_t eSum ;
-	Serial.write('>');
-	for (int i = 0; i < 3; i++) {
-		I2Cdev::readWords(devAddr, SaveAddress + (i * shift), 1, (uint16_t *)&Data); // reads 1 or more 16 bit integers (Word)
-		Reading = Data;
-		if(SaveAddress != 0x13){
-			BitZero[i] = Data & 1;										 // Capture Bit Zero to properly handle Accelerometer calibration
-			ITerm[i] = ((float)Reading) * 8;
-			} else {
-			ITerm[i] = Reading * 4;
-		}
-	}
-	for (int L = 0; L < Loops; L++) {
-		eSample = 0;
-		for (int c = 0; c < 100; c++) {// 100 PI Calculations
-			eSum = 0;
-			for (int i = 0; i < 3; i++) {
-				I2Cdev::readWords(devAddr, ReadAddress + (i * 2), 1, (uint16_t *)&Data); // reads 1 or more 16 bit integers (Word)
-				Reading = Data;
-				if ((ReadAddress == 0x3B)&&(i == 2)) Reading -= 16384;	//remove Gravity
-				Error = -Reading;
-				eSum += abs(Reading);
-				PTerm = kP * Error;
-				ITerm[i] += (Error * 0.001) * kI;				// Integral term 1000 Calculations a second = 0.001
-				if(SaveAddress != 0x13){
-					Data = round((PTerm + ITerm[i] ) / 8);		//Compute PID Output
-					Data = ((Data)&0xFFFE) |BitZero[i];			// Insert Bit0 Saved at beginning
-				} else Data = round((PTerm + ITerm[i] ) / 4);	//Compute PID Output
-				I2Cdev::writeWords(devAddr, SaveAddress + (i * shift), 1, (uint16_t *)&Data);
-			}
-			if((c == 99) && eSum > 1000){						// Error is still to great to continue 
-				c = 0;
-				Serial.write('*');
-			}
-			if((eSum * ((ReadAddress == 0x3B)?.05: 1)) < 5) eSample++;	// Successfully found offsets prepare to  advance
-			if((eSum < 100) && (c > 10) && (eSample >= 10)) break;		// Advance to next Loop
-			delay(1);
-		}
-		Serial.write('.');
-		kP *= .75;
-		kI *= .75;
-		for (int i = 0; i < 3; i++){
-			if(SaveAddress != 0x13) {
-				Data = round((ITerm[i] ) / 8);		//Compute PID Output
-				Data = ((Data)&0xFFFE) | BitZero[i];	// Insert Bit0 Saved at beginning
-			} else {
-				Data = round((ITerm[i]) / 4);
-			}
-			I2Cdev::writeWords(devAddr, SaveAddress + (i * shift), 1, (uint16_t *)&Data);
-		}
-	}
-	resetFIFO();
-	resetDMP();
+void MPU6050::PID(uint8_t ReadAddress, float kP, float kI, uint8_t Loops) {
+    uint8_t SaveAddress = (ReadAddress == 0x3B) ? ((getDeviceID() < 0x38) ? 0x06 : 0x77) : 0x13;
+
+    int16_t Data;
+    float Reading;
+    int16_t BitZero[3];
+    uint8_t shift = (SaveAddress == 0x77) ? 3 : 2;
+    float Error, PTerm, ITerm[3];
+    int16_t eSample;
+    uint32_t eSum;
+    Serial.write('>');
+    for (int i = 0; i < 3; i++) {
+        I2Cdev::readWords(devAddr, SaveAddress + (i * shift), 1, (uint16_t *)&Data); // reads 1 or more 16 bit integers (Word)
+        Reading = (float)Data; // Ensure Reading is treated as a float
+        if (SaveAddress != 0x13) {
+            BitZero[i] = Data & 1; // Capture Bit Zero to properly handle Accelerometer calibration
+            ITerm[i] = Reading * 8.0f; // Use 8.0f to ensure float multiplication
+        } else {
+            ITerm[i] = Reading * 4.0f; // Use 4.0f to ensure float multiplication
+        }
+    }
+    for (int L = 0; L < Loops; L++) {
+        eSample = 0;
+        for (int c = 0; c < 100; c++) { // 100 PI Calculations
+            eSum = 0;
+            for (int i = 0; i < 3; i++) {
+                I2Cdev::readWords(devAddr, ReadAddress + (i * 2), 1, (uint16_t *)&Data); // reads 1 or more 16 bit integers (Word)
+                Reading = (float)Data; // Ensure Reading is treated as a float
+                if ((ReadAddress == 0x3B) && (i == 2)) Reading -= 16384.0f; // remove Gravity
+                Error = -Reading;
+                eSum += (uint32_t)abs(Reading); // Cast abs result to uint32_t
+                PTerm = kP * Error;
+                ITerm[i] += (Error * 0.001f) * kI; // Integral term 1000 Calculations a second = 0.001
+                if (SaveAddress != 0x13) {
+                    Data = (int16_t)custom_roundf((PTerm + ITerm[i]) / 8.0f); // Compute PID Output using custom_roundf
+                    Data = ((Data) & 0xFFFE) | BitZero[i]; // Insert Bit0 Saved at beginning
+                } else {
+                    Data = (int16_t)custom_roundf((PTerm + ITerm[i]) / 4.0f); // Compute PID Output using custom_roundf
+                }
+                I2Cdev::writeWords(devAddr, SaveAddress + (i * shift), 1, (uint16_t *)&Data);
+            }
+            if ((c == 99) && eSum > 1000) { // Error is still too great to continue
+                c = 0;
+                Serial.write('*');
+            }
+            if ((eSum * ((ReadAddress == 0x3B) ? 0.05f : 1.0f)) < 5.0f) eSample++; // Successfully found offsets, prepare to advance
+            if ((eSum < 100) && (c > 10) && (eSample >= 10)) break; // Advance to next Loop
+            delay(1);
+        }
+        Serial.write('.');
+        kP *= 0.75f;
+        kI *= 0.75f;
+        for (int i = 0; i < 3; i++) {
+            if (SaveAddress != 0x13) {
+                Data = (int16_t)custom_roundf((ITerm[i]) / 8.0f); // Compute PID Output using custom_roundf
+                Data = ((Data) & 0xFFFE) | BitZero[i]; // Insert Bit0 Saved at beginning
+            } else {
+                Data = (int16_t)custom_roundf((ITerm[i]) / 4.0f); // Compute PID Output using custom_roundf
+            }
+            I2Cdev::writeWords(devAddr, SaveAddress + (i * shift), 1, (uint16_t *)&Data);
+        }
+    }
+    resetFIFO();
+    resetDMP();
 }
 
 #define printfloatx(Name,Variable,Spaces,Precision,EndTxt) { Serial.print(F(Name)); {char S[(Spaces + Precision + 3)];Serial.print(F(" ")); Serial.print(dtostrf((float)Variable,Spaces,Precision ,S));}Serial.print(F(EndTxt)); }//Name,Variable,Spaces,Precision,EndTxt

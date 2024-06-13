@@ -5,7 +5,7 @@
 #include "Arduino.h"
 
 #define DO_SELF_TEST_ON_INIT 1
-#define USE_CON_MODE_AS_DEFAULT 0
+#define USE_CON_MODE_AS_DEFAULT 1
 
 #define QMC6310U
 

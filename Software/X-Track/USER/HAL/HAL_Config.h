@@ -31,10 +31,10 @@
 #define CONFIG_SENSOR_ENABLE        1
 
 #if CONFIG_SENSOR_ENABLE
-#  define CONFIG_SENSOR_IMU_ENABLE       1
-#  define CONFIG_SENSOR_MAG_ENABLE       0
-#  define CONFIG_SENSOR_PRESSURE_ENABLE  1
-#  define CONFIG_LIPO_FUEL_GAUGE_ENABLE  1
+#  define CONFIG_SENSOR_IMU_ENABLE       1  //陀螺仪
+#  define CONFIG_SENSOR_MAG_ENABLE       1  //磁力计
+#  define CONFIG_SENSOR_PRESSURE_ENABLE  0  //气压计
+#  define CONFIG_LIPO_FUEL_GAUGE_ENABLE  1  //电量计
 #endif
 
 /* Sensor model */

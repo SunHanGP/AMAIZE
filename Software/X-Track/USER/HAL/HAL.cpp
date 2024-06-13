@@ -59,7 +59,9 @@ void HAL::HAL_Init()
 
     FaultHandle_Init();
 
+#if CONFIG_SHOW_STACK_INFO | CONFIG_SHOW_HEAP_INFO
     Memory_DumpInfo();
+#endif
 
     Power_Init();
     Backlight_Init();
@@ -86,7 +88,10 @@ void HAL::HAL_Init()
     taskManager.Register(Power_EventMonitor, 100);
     taskManager.Register(GPS_Update, 200);
     taskManager.Register(SD_Update, 500);
+
+#if CONFIG_SHOW_STACK_INFO | CONFIG_SHOW_HEAP_INFO
     taskManager.Register(Memory_DumpInfo, 1000);
+#endif
     
 #if CONFIG_LIPO_FUEL_GAUGE_ENABLE
     taskManager.Register(Power_Update, 500);

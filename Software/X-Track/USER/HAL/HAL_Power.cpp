@@ -30,12 +30,14 @@ struct
     HAL::Power_CallbackFunction_t EventCallback;
 } Power;
 
-static void Power_ADC_Init(ADC_Type* ADCx)
-{
 #if CONFIG_LIPO_FUEL_GAUGE_ENABLE
+static void Power_ADC_Init(void)
+{
     fuel_gauge.init();
     fuel_gauge.refreshData();
 #else
+static void Power_ADC_Init(ADC_Type* ADCx)
+{
     RCC_APB2PeriphClockCmd(RCC_APB2PERIPH_ADC1, ENABLE);
     RCC_ADCCLKConfig(RCC_APB2CLK_Div8);
 
@@ -58,9 +60,11 @@ static void Power_ADC_Init(ADC_Type* ADCx)
     while(ADC_GetResetCalibrationStatus(ADCx));
     ADC_StartCalibration(ADCx);
     while(ADC_GetCalibrationStatus(ADCx));
+}
 #endif
 }
 
+#if !CONFIG_LIPO_FUEL_GAUGE_ENABLE
 static uint16_t Power_ADC_GetValue()
 {
     uint16_t retval = 0;
@@ -70,7 +74,7 @@ static uint16_t Power_ADC_GetValue()
     }
     return retval;
 }
-
+#endif
 static void Power_ADC_Update()
 {
 
@@ -110,16 +114,17 @@ void HAL::Power_Init()
     digitalWrite(CONFIG_POWER_EN_PIN, HIGH);
     Serial.println("Power: ON");
 
-    Power_ADC_Init(BATT_ADC);
-    pinMode(CONFIG_BAT_DET_PIN, INPUT_ANALOG);
 
 #if !CONFIG_LIPO_FUEL_GAUGE_ENABLE
-    pinMode(CONFIG_BAT_CHG_DET_PIN, BATT_CHG_DET_PIN_MODE);
+    Power_ADC_Init(BATT_ADC);
+    pinMode(CONFIG_BAT_DET_PIN, INPUT_ANALOG);
 
 //    Power_SetAutoLowPowerTimeout(5 * 60);
 //    Power_HandleTimeUpdate();
     Power_SetAutoLowPowerEnable(false);
 #else
+    Power_ADC_Init();
+    pinMode(CONFIG_BAT_CHG_DET_PIN, BATT_CHG_DET_PIN_MODE);
     Power_SetAutoLowPowerTimeout(60);
     Power_HandleTimeUpdate();
     Power_SetAutoLowPowerEnable(true);
