@@ -17,7 +17,7 @@ static BQ27220 fuel_gauge;
 #  define BATT_CHG_DET_STATUS       (!digitalRead(CONFIG_BAT_CHG_DET_PIN))
 #else
 #  define BATT_CHG_DET_PIN_MODE     INPUT_PULLDOWN
-#  define BATT_CHG_DET_STATUS       ((usage == 100) ? false : digitalRead(CONFIG_BAT_CHG_DET_PIN))
+#  define BATT_CHG_DET_STATUS       ((info->usage == 100) ? false : digitalRead(CONFIG_BAT_CHG_DET_PIN))
 #endif
 
 struct
@@ -222,7 +222,7 @@ void HAL::Power_GetInfo(Power_Info_t* info)
 #else
     info->voltage = fuel_gauge.voltage;
     info->usage = uint8_t(fuel_gauge.remaining_capacity * 100.0 / fuel_gauge.fullcharge_capacity);
-    info->isCharging = (!digitalRead(CONFIG_BAT_CHG_DET_PIN)) && (fuel_gauge.battery_status == BQ27220::CHARGING || fuel_gauge.battery_status == BQ27220::FULL);
+    info->isCharging = BATT_CHG_DET_STATUS && (fuel_gauge.battery_status == BQ27220::CHARGING || fuel_gauge.battery_status == BQ27220::FULL);
     if (info->isCharging)
     {
         info->time_to = fuel_gauge.time_to_full;
